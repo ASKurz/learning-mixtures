@@ -1,0 +1,16 @@
+base
+tidyverse
+ggplot2
+tibble
+tidyr
+readr
+purrr
+dplyr
+stringr
+forcats
+GGally
+bindrcpp
+Rcpp
+brms
+bayesplot
+gridExtra

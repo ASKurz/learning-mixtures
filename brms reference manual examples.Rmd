@@ -38,7 +38,195 @@ dat %>%
   ggpairs()
 ```
 
+## `fit1`: A simple normal mixture model
 
+Open brms.
+
+```{r, message = F, warning = F}
+library(brms)
+```
+
+Fit the model.
+```{r}
+get_prior(data = dat,
+      family = mixture(gaussian, gaussian),
+      bf(y ~ x + z))
+```
+
+```{r fit1_s1_to_fit1_s4_0, cache = T, message = F, warning = F, results = "hide"}
+fit1_s1 <- 
+  brm(data = dat,
+      family = mixture(gaussian, gaussian),
+      bf(y ~ x + z),
+      prior = c(prior(normal(0, 7), Intercept, dpar = mu1),
+                prior(normal(5, 7), Intercept, dpar = mu2)), 
+      iter = 2000, warmup = 1000, chains = 2, cores = 2,
+      seed = 1)
+
+fit1_s2 <-
+  update(fit1_s1,
+         seed = 2)
+
+fit1_s3 <-
+  update(fit1_s1,
+         seed = 3)
+
+fit1_s4 <-
+  update(fit1_s1,
+         seed = 4)
+```
+
+If you'd like to inspect all those chains, you can use the `plot()` funciton, as usual. Since we're working in bulk, it might make sense to condense our diagnostics to $\hat R$ plots via the [bayesplot package](http://mc-stan.org/bayesplot/).
+
+```{r, fig.height = 3.5, fig.width = 8}
+library(bayesplot)
+library(gridExtra)
+
+p1 <-
+  rhat(fit1_s1) %>% 
+  mcmc_rhat()
+
+p2 <-
+  rhat(fit1_s2) %>% 
+  mcmc_rhat()
+
+p3 <-
+  rhat(fit1_s3) %>% 
+  mcmc_rhat()
+
+p4 <-
+  rhat(fit1_s4) %>% 
+  mcmc_rhat()
+
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+```
+
+Recall we like our $\hat R$ values to hover around 1. For the models from each seed, those are just a disaster. Let's take a peek at the chains from just two of the fits to get a sense of the damage.
+
+```{r, fig.width = 8, fig.height = 3}
+posterior_samples(fit1_s1, add_chain = T) %>% 
+  select(-lp__, -iter) %>% 
+  mcmc_trace(facet_args = list(ncol = 5)) +
+  ggtitle("seed = 1") +
+  theme(legend.position = "top")
+
+posterior_samples(fit1_s4, add_chain = T) %>% 
+  select(-lp__, -iter) %>% 
+  mcmc_trace(facet_args = list(ncol = 5)) +
+  ggtitle("seed = 4") +
+  theme(legend.position = "top")
+```
+
+Where as many of the chains in `fit1_s1` appeared to wildly meander across the parameter space, The parallel chains in `fit1_s4` seemed to stabilize on alternative parameter spaces. I believe this is often called the label switching problem (e.g., see [here](http://stephenslab.uchicago.edu/assets/papers/Stephens2000b.pdf)). Either way, the resulting $\hat R$ values were awful.
+
+For our first attempt at fixing the issue, we might tighten up the priors. Of our three variables, two are standardized and the third is a dummy. It wouldn't be unreasonable to $\sigma = 1$ Gaussians on all intercepts, $\beta$s, and even the model $\sigma$s themselves.
+
+```{r fit1_s1_to_fit1_s4_1, cache = T, message = F, warning = F, results = "hide"}
+fit1_s1 <- 
+  brm(data = dat,
+      family = mixture(gaussian, gaussian),
+      bf(y ~ x + z),
+      prior = c(prior(normal(0, 1), Intercept, dpar = mu1),
+                prior(normal(5, 1), Intercept, dpar = mu2),
+                prior(normal(0, 1), class = b, dpar = mu1),
+                prior(normal(0, 1), class = b, dpar = mu2),
+                prior(normal(0, 1), class = sigma1),
+                prior(normal(0, 1), class = sigma2)), 
+      iter = 2000, warmup = 1000, chains = 2, cores = 2,
+      seed = 1)
+
+fit1_s2 <-
+  update(fit1_s1,
+         seed = 2)
+
+fit1_s3 <-
+  update(fit1_s1,
+         seed = 3)
+
+fit1_s4 <-
+  update(fit1_s1,
+         seed = 4)
+```
+
+Check the $\hat R$ values.
+
+```{r, fig.height = 3.5, fig.width = 8}
+p1 <-
+  rhat(fit1_s1) %>% 
+  mcmc_rhat()
+
+p2 <-
+  rhat(fit1_s2) %>% 
+  mcmc_rhat()
+
+p3 <-
+  rhat(fit1_s3) %>% 
+  mcmc_rhat()
+
+p4 <-
+  rhat(fit1_s4) %>% 
+  mcmc_rhat()
+
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+```
+
+They only look good for 1 on 4. Not very encouraging. Let's revisit the chains for `seed = 1` and now inspect the better-looing `seed = 2`.
+
+```{r, fig.width = 8, fig.height = 3}
+posterior_samples(fit1_s1, add_chain = T) %>% 
+  select(-lp__, -iter) %>% 
+  mcmc_trace(facet_args = list(ncol = 5)) +
+  ggtitle("seed = 1") +
+  theme(legend.position = "top")
+
+posterior_samples(fit1_s2, add_chain = T) %>% 
+  select(-lp__, -iter) %>% 
+  mcmc_trace(facet_args = list(ncol = 5)) +
+  ggtitle("seed = 2") +
+  theme(legend.position = "top")
+```
+
+Well, the chains for `seed = 1` aren’t wildly flailing across ridiculous areas of the parameter space anymore. But they show the same odd parallel behavior like those from `seed = 4` in our first attempt. At least the chains from `seed = 2` have given us hope. If we were lazy, we’d just go ahead and use those. But man, that seems like a risky workflow, to me. I’d like a more stable solution. Let’s peek at the default priors for the $\theta$ parameters.
+
+```{r}
+get_prior(data = dat,
+          family = mixture(gaussian, gaussian),
+          bf(y ~ x + z))
+```
+
+Here's a look at the logistic distribution with the Gaussian in red for comparison.
+
+```{r, fig.width = 6, fig.height = 2}
+tibble(x = seq(from = -10, to = 10, length.out = 200)) %>% 
+  ggplot(aes(x = x,
+             ymin = 0,
+             ymax = dlogis(x, location = 0, scale = 1))) +
+  geom_ribbon() +
+  geom_line(aes(y = dnorm(x, mean = 0, sd = 1)),
+            color = "red") +
+  scale_y_continuous(NULL, breaks = NULL) +
+  xlab("the logistic distribution")
+```
+
+
+
+
+
+
+
+It appears `theta[i]` is the proportion parameter. If so, the $\theta$s should always sum to 1. Let's see.
+
+```{r, eval = F}
+posterior_samples(fit1) %>% 
+  transmute(theta_sum = theta1 + theta2) %>% 
+  range()
+```
+
+Yep. It appears $\theta$ is indeed the proportion parameter. Let's do a posterior predictive check.
+
+```{r, fig.width = 5, fig.height = 3, message = F, eval = F}
+pp_check(fit1)
+```
 
 
 
