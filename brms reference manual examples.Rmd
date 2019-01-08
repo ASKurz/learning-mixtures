@@ -1,0 +1,30 @@
+---
+title: "brms reference manual examples"
+author: "A Solomon Kurz"
+date: "`r format(Sys.Date())`"
+output:
+  github_document
+---
+
+These are taken from the `mixture` section of the [brms reference manual](https://cran.r-project.org/web/packages/brms/brms.pdf).
+
+```{r}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Session info {-}
+
+```{r}
+sessionInfo()
+```
