@@ -57,30 +57,9 @@ Open brms.
 library(brms)
 ```
 
+### Initial attempt following the reference manual syntax
+
 Fit the model.
-
-``` r
-get_prior(data = dat,
-      family = mixture(gaussian, gaussian),
-      bf(y ~ x + z))
-```
-
-    ## Setting order = 'mu' for mixtures of the same family.
-
-    ##                  prior     class coef group resp dpar nlpar bound
-    ## 1  student_t(3, 0, 10)    sigma1                                 
-    ## 2  student_t(3, 0, 10)    sigma2                                 
-    ## 3                          theta                                 
-    ## 4       logistic(0, 1)    theta1                                 
-    ## 5       logistic(0, 1)    theta2                                 
-    ## 6                              b                  mu1            
-    ## 7                              b    x             mu1            
-    ## 8                              b    z             mu1            
-    ## 9  student_t(3, 1, 10) Intercept                  mu1            
-    ## 10                             b                  mu2            
-    ## 11                             b    x             mu2            
-    ## 12                             b    z             mu2            
-    ## 13 student_t(3, 1, 10) Intercept                  mu2
 
 ``` r
 fit1_s1 <- 
@@ -130,7 +109,7 @@ p4 <-
 grid.arrange(p1, p2, p3, p4, ncol = 2)
 ```
 
-![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-5-1.png)
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-4-1.png)
 
 Recall we like our $\\hat R$ values to hover around 1. For the models from each seed, those are just a disaster. Let's take a peek at the chains from just two of the fits to get a sense of the damage.
 
@@ -142,7 +121,7 @@ posterior_samples(fit1_s1, add_chain = T) %>%
   theme(legend.position = "top")
 ```
 
-![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-6-1.png)
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-5-1.png)
 
 ``` r
 posterior_samples(fit1_s4, add_chain = T) %>% 
@@ -152,9 +131,11 @@ posterior_samples(fit1_s4, add_chain = T) %>%
   theme(legend.position = "top")
 ```
 
-![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-6-2.png)
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-5-2.png)
 
 Where as many of the chains in `fit1_s1` appeared to wildly meander across the parameter space, The parallel chains in `fit1_s4` seemed to stabilize on alternative parameter spaces. I believe this is often called the label switching problem (e.g., see [here](http://stephenslab.uchicago.edu/assets/papers/Stephens2000b.pdf)). Either way, the resulting $\\hat R$ values were awful.
+
+### Second attempt: Tighten up the priors
 
 For our first attempt at fixing the issue, we might tighten up the priors. Of our three variables, two are standardized and the third is a dummy. It wouldn't be unreasonable to *σ* = 1 Gaussians on all intercepts, *β*s, and even the model *σ*s themselves.
 
@@ -207,7 +188,7 @@ p4 <-
 grid.arrange(p1, p2, p3, p4, ncol = 2)
 ```
 
-![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-7-1.png)
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-6-1.png)
 
 They only look good for 1 on 4. Not very encouraging. Let's revisit the chains for `seed = 1` and now inspect the better-looing `seed = 2`.
 
@@ -219,7 +200,7 @@ posterior_samples(fit1_s1, add_chain = T) %>%
   theme(legend.position = "top")
 ```
 
-![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-8-1.png)
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-7-1.png)
 
 ``` r
 posterior_samples(fit1_s2, add_chain = T) %>% 
@@ -229,9 +210,161 @@ posterior_samples(fit1_s2, add_chain = T) %>%
   theme(legend.position = "top")
 ```
 
-![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-8-2.png)
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-7-2.png)
 
-Well, the chains for `seed = 1` aren’t wildly flailing across ridiculous areas of the parameter space anymore. But they show the same odd parallel behavior like those from `seed = 4` in our first attempt. At least the chains from `seed = 2` have given us hope. If we were lazy, we’d just go ahead and use those. But man, that seems like a risky workflow, to me. I’d like a more stable solution. Let’s peek at the default priors for the *θ* parameters.
+Well, the chains for `seed = 1` aren’t wildly flailing across ridiculous areas of the parameter space anymore. But they show the same odd parallel behavior like those from `seed = 4` in our first attempt. At least the chains from `seed = 2` have given us hope. If we were lazy, we’d just go ahead and use those. But man, that seems like a risky workflow, to me. I’d like a more stable solution.
+
+### Third attempt: `order = "mu"`
+
+``` r
+fit1_s1 <- 
+  brm(data = dat,
+      family = mixture(gaussian, gaussian, order = "mu"),
+      bf(y ~ x + z),
+      prior = c(prior(normal(0, 7), Intercept, dpar = mu1),
+                prior(normal(5, 7), Intercept, dpar = mu2)), 
+      iter = 2000, warmup = 1000, chains = 2, cores = 2,
+      seed = 1)
+
+fit1_s2 <-
+  update(fit1_s1,
+         seed = 2)
+
+fit1_s3 <-
+  update(fit1_s1,
+         seed = 3)
+
+fit1_s4 <-
+  update(fit1_s1,
+         seed = 4)
+```
+
+What do the $\\hat R$ values tell us?
+
+``` r
+p1 <-
+  rhat(fit1_s1) %>% 
+  mcmc_rhat()
+
+p2 <-
+  rhat(fit1_s2) %>% 
+  mcmc_rhat()
+
+p3 <-
+  rhat(fit1_s3) %>% 
+  mcmc_rhat()
+
+p4 <-
+  rhat(fit1_s4) %>% 
+  mcmc_rhat()
+
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+```
+
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-8-1.png)
+
+Nope, using `order = "mu"` didn't solve the problem. Let's confirm by looking at the chains.
+
+``` r
+posterior_samples(fit1_s1, add_chain = T) %>% 
+  select(-lp__, -iter) %>% 
+  mcmc_trace(facet_args = list(ncol = 5)) +
+  ggtitle("seed = 1") +
+  theme(legend.position = "top")
+```
+
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-9-1.png)
+
+``` r
+posterior_samples(fit1_s2, add_chain = T) %>% 
+  select(-lp__, -iter) %>% 
+  mcmc_trace(facet_args = list(ncol = 5)) +
+  ggtitle("seed = 4") +
+  theme(legend.position = "top")
+```
+
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-9-2.png)
+
+### Fourth attempt: Add `order = "mu"` in addition to better priors
+
+Here we combine `order = "mu"` to the models with the tighter priors from the second attempt.
+
+``` r
+fit1_s1 <- 
+  brm(data = dat,
+      family = mixture(gaussian, gaussian, order = "mu"),
+      bf(y ~ x + z),
+      prior = c(prior(normal(0, 1), Intercept, dpar = mu1),
+                prior(normal(5, 1), Intercept, dpar = mu2),
+                prior(normal(0, 1), class = b, dpar = mu1),
+                prior(normal(0, 1), class = b, dpar = mu2),
+                prior(normal(0, 1), class = sigma1),
+                prior(normal(0, 1), class = sigma2)), 
+      iter = 2000, warmup = 1000, chains = 2, cores = 2,
+      seed = 1)
+
+fit1_s2 <-
+  update(fit1_s1,
+         seed = 2)
+
+fit1_s3 <-
+  update(fit1_s1,
+         seed = 3)
+
+fit1_s4 <-
+  update(fit1_s1,
+         seed = 4)
+```
+
+How do the $\\hat R$ values look now?
+
+``` r
+p1 <-
+  rhat(fit1_s1) %>% 
+  mcmc_rhat()
+
+p2 <-
+  rhat(fit1_s2) %>% 
+  mcmc_rhat()
+
+p3 <-
+  rhat(fit1_s3) %>% 
+  mcmc_rhat()
+
+p4 <-
+  rhat(fit1_s4) %>% 
+  mcmc_rhat()
+
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+```
+
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-10-1.png)
+
+Still failed on 3/4. We need a better solution. Here are some of the chains.
+
+``` r
+posterior_samples(fit1_s1, add_chain = T) %>% 
+  select(-lp__, -iter) %>% 
+  mcmc_trace(facet_args = list(ncol = 5)) +
+  ggtitle("seed = 1") +
+  theme(legend.position = "top")
+```
+
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-11-1.png)
+
+``` r
+posterior_samples(fit1_s2, add_chain = T) %>% 
+  select(-lp__, -iter) %>% 
+  mcmc_trace(facet_args = list(ncol = 5)) +
+  ggtitle("seed = 2") +
+  theme(legend.position = "top")
+```
+
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-11-2.png)
+
+The label switching persists.
+
+Let’s peek at the default priors for the *θ* parameters.
 
 ``` r
 get_prior(data = dat,
@@ -270,7 +403,7 @@ tibble(x = seq(from = -10, to = 10, length.out = 200)) %>%
   xlab("the logistic distribution")
 ```
 
-![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-10-1.png)
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-13-1.png)
 
 It appears `theta[i]` is the proportion parameter. If so, the *θ*s should always sum to 1. Let's see.
 
@@ -339,10 +472,10 @@ sessionInfo()
     ## [67] miniUI_0.1.1.1       lattice_0.20-35      haven_1.1.2         
     ## [70] hms_0.4.2            ps_1.2.1             knitr_1.20          
     ## [73] pillar_1.2.3         igraph_1.2.1         markdown_0.8        
-    ## [76] shinystan_2.5.0      codetools_0.2-15     stats4_3.5.1        
-    ## [79] reshape2_1.4.3       rstantools_1.5.0     glue_1.3.0          
-    ## [82] evaluate_0.10.1      modelr_0.1.2         httpuv_1.4.4.2      
-    ## [85] cellranger_1.1.0     gtable_0.2.0         reshape_0.8.7       
-    ## [88] assertthat_0.2.0     mime_0.5             xtable_1.8-2        
-    ## [91] broom_0.4.5          coda_0.19-2          later_0.7.3         
-    ## [94] rsconnect_0.8.8      shinythemes_1.1.1    bridgesampling_0.4-0
+    ## [76] shinystan_2.5.0      stats4_3.5.1         reshape2_1.4.3      
+    ## [79] rstantools_1.5.0     glue_1.3.0           evaluate_0.10.1     
+    ## [82] modelr_0.1.2         httpuv_1.4.4.2       cellranger_1.1.0    
+    ## [85] gtable_0.2.0         reshape_0.8.7        assertthat_0.2.0    
+    ## [88] mime_0.5             xtable_1.8-2         broom_0.4.5         
+    ## [91] coda_0.19-2          later_0.7.3          rsconnect_0.8.8     
+    ## [94] shinythemes_1.1.1    bridgesampling_0.4-0
