@@ -8,7 +8,34 @@ output:
 
 These are taken from the `mixture` section of the [brms reference manual](https://cran.r-project.org/web/packages/brms/brms.pdf).
 
-```{r}
+## We need data
+
+Here we simulate our data, `dat`.
+
+```{r, message = F, warning = F}
+library(tidyverse)
+
+set.seed(1234)
+dat <- 
+  tibble(y = c(rnorm(200, mean = 0, sd = 1), 
+               rnorm(100, mean = 6, sd = 1)),
+         x = rnorm(300, mean = 0, sd = 1),
+         z = sample(0:1, 300, replace = T))
+
+head(dat)
+```
+
+Here's what the data look like.
+
+```{r, fig.width = 4.25, fig.height = 4, message = F, warning = F}
+library(GGally)
+theme_set(theme_grey() +
+            theme(panel.grid = element_blank()))
+
+dat %>% 
+  mutate(z = factor(z)) %>% 
+  
+  ggpairs()
 ```
 
 
