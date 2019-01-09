@@ -364,60 +364,152 @@ posterior_samples(fit1_s2, add_chain = T) %>%
 
 The label switching persists.
 
-Let’s peek at the default priors for the *θ* parameters.
+### Fifth attempt: What if we tighten up the priors on those intercepts even more?
+
+We'll reduce those Gaussian *σ*s to 0.5.
 
 ``` r
-get_prior(data = dat,
-          family = mixture(gaussian, gaussian),
-          bf(y ~ x + z))
+fit1_s1 <- 
+  brm(data = dat,
+      family = mixture(gaussian, gaussian, order = "mu"),
+      bf(y ~ x + z),
+      prior = c(prior(normal(0, .5), Intercept, dpar = mu1),
+                prior(normal(5, .5), Intercept, dpar = mu2),
+                prior(normal(0, 1), class = b, dpar = mu1),
+                prior(normal(0, 1), class = b, dpar = mu2),
+                prior(normal(0, 1), class = sigma1),
+                prior(normal(0, 1), class = sigma2)), 
+      iter = 2000, warmup = 1000, chains = 2, cores = 2,
+      seed = 1)
+
+fit1_s2 <-
+  update(fit1_s1,
+         seed = 2)
+
+fit1_s3 <-
+  update(fit1_s1,
+         seed = 3)
+
+fit1_s4 <-
+  update(fit1_s1,
+         seed = 4)
 ```
 
-    ## Setting order = 'mu' for mixtures of the same family.
-
-    ##                  prior     class coef group resp dpar nlpar bound
-    ## 1  student_t(3, 0, 10)    sigma1                                 
-    ## 2  student_t(3, 0, 10)    sigma2                                 
-    ## 3                          theta                                 
-    ## 4       logistic(0, 1)    theta1                                 
-    ## 5       logistic(0, 1)    theta2                                 
-    ## 6                              b                  mu1            
-    ## 7                              b    x             mu1            
-    ## 8                              b    z             mu1            
-    ## 9  student_t(3, 1, 10) Intercept                  mu1            
-    ## 10                             b                  mu2            
-    ## 11                             b    x             mu2            
-    ## 12                             b    z             mu2            
-    ## 13 student_t(3, 1, 10) Intercept                  mu2
-
-Here's a look at the logistic distribution with the Gaussian in red for comparison.
+How do the $\\hat R$ values look now?
 
 ``` r
-tibble(x = seq(from = -10, to = 10, length.out = 200)) %>% 
-  ggplot(aes(x = x,
-             ymin = 0,
-             ymax = dlogis(x, location = 0, scale = 1))) +
-  geom_ribbon() +
-  geom_line(aes(y = dnorm(x, mean = 0, sd = 1)),
-            color = "red") +
-  scale_y_continuous(NULL, breaks = NULL) +
-  xlab("the logistic distribution")
+p1 <-
+  rhat(fit1_s1) %>% 
+  mcmc_rhat()
+
+p2 <-
+  rhat(fit1_s2) %>%
+  mcmc_rhat()
+
+p3 <-
+  rhat(fit1_s3) %>% 
+  mcmc_rhat()
+
+p4 <-
+  rhat(fit1_s4) %>% 
+  mcmc_rhat()
+
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+```
+
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-12-1.png)
+
+Success! I feel so whipped from the previous versions, let's just examine some of the chains to make sure it's all good.
+
+``` r
+posterior_samples(fit1_s1, add_chain = T) %>% 
+  select(-lp__, -iter) %>% 
+  mcmc_trace(facet_args = list(ncol = 5)) +
+  ggtitle("seed = 1") +
+  theme(legend.position = "top")
 ```
 
 ![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-13-1.png)
 
-It appears `theta[i]` is the proportion parameter. If so, the *θ*s should always sum to 1. Let's see.
+``` r
+posterior_samples(fit1_s2, add_chain = T) %>% 
+  select(-lp__, -iter) %>% 
+  mcmc_trace(facet_args = list(ncol = 5)) +
+  ggtitle("seed = 2") +
+  theme(legend.position = "top")
+```
+
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-13-2.png)
+
+Oh mamma. Those are some sweet chains. So we learned a lesson. One reasonably reliable solution to the label switching problem is if we hold the model's hand with tight priors on the intercept, or presumably the other parameters we expect substantial differences in. I'm definitely not entirely happy with this method. It seems heavier-handed than I prefer.
+
+But anyways, let's look at the model summary.
 
 ``` r
-posterior_samples(fit1) %>% 
+print(fit1_s1)
+```
+
+    ##  Family: mixture(gaussian, gaussian) 
+    ##   Links: mu1 = identity; sigma1 = identity; mu2 = identity; sigma2 = identity; theta1 = identity; theta2 = identity 
+    ## Formula: y ~ x + z 
+    ##    Data: dat (Number of observations: 300) 
+    ## Samples: 2 chains, each with iter = 2000; warmup = 1000; thin = 1;
+    ##          total post-warmup samples = 2000
+    ## 
+    ## Population-Level Effects: 
+    ##               Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+    ## mu1_Intercept     0.01      0.10    -0.19     0.21       2579 1.00
+    ## mu2_Intercept     5.90      0.13     5.64     6.14       3375 1.00
+    ## mu1_x             0.06      0.07    -0.08     0.19       4026 1.00
+    ## mu1_z            -0.11      0.15    -0.41     0.18       3825 1.00
+    ## mu2_x            -0.06      0.10    -0.26     0.14       3119 1.00
+    ## mu2_z             0.45      0.18     0.08     0.81       4103 1.00
+    ## 
+    ## Family Specific Parameters: 
+    ##        Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+    ## sigma1     1.04      0.06     0.94     1.15       3234 1.00
+    ## sigma2     0.90      0.07     0.77     1.06       2982 1.00
+    ## theta1     0.67      0.03     0.61     0.72       3702 1.00
+    ## theta2     0.33      0.03     0.28     0.39       3702 1.00
+    ## 
+    ## Samples were drawn using sampling(NUTS). For each parameter, Eff.Sample 
+    ## is a crude measure of effective sample size, and Rhat is the potential 
+    ## scale reduction factor on split chains (at convergence, Rhat = 1).
+
+The parameter estimates look great. And yeah, it makes sense this was a difficult model to fit. It was only the intercepts that varied across the two classes. Everything else was basically the same.
+
+Well, okay, those *θ* parameters differed. Which, by the way, leads one to nail down precisely what they are. They look a lot like proportions. If so, the *θ*s should always sum to 1. Let's see.
+
+``` r
+posterior_samples(fit1_s1) %>% 
   transmute(theta_sum = theta1 + theta2) %>% 
   range()
 ```
 
-Yep. It appears *θ* is indeed the proportion parameter. Let's do a posterior predictive check.
+    ## [1] 1 1
+
+Yep, they always sum to 1, consistent with a proportion interpretation. Based on the combination of the intercepts and *θ*s, the model is telling us the intercept was about 0 for 2/3 of the cases. We can confirm that's correct with a quick refresher at the simulation code:
 
 ``` r
-pp_check(fit1)
+dat <- 
+  tibble(y = c(rnorm(200, mean = 0, sd = 1), 
+               rnorm(100, mean = 6, sd = 1)),
+         x = rnorm(300, mean = 0, sd = 1),
+         z = sample(0:1, 300, replace = T))
 ```
+
+Yep, for `y`, 200 of the total 300 cases were simulated based on the standard Gaussian.
+
+Let's finish out the code from the reference manual and do a posterior predictive check.
+
+``` r
+pp_check(fit1_s1,
+         nsamples = 20)
+```
+
+![](brms_reference_manual_examples_files/figure-markdown_github/unnamed-chunk-17-1.png)
+
+Looks great!
 
 Session info
 ------------
